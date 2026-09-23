@@ -226,8 +226,8 @@
   var countBadge = document.getElementById('countBadge');
   var countLabel = document.getElementById('countLabel');
   var countHistory = [];
-  var HISTORY_SIZE = 5;
-  var STABILITY_MIN = 3;
+  var HISTORY_SIZE = 9;
+  var STABILITY_MIN = 5;
   var stableCount = null;
 
   advToggle.addEventListener('click', function () {
@@ -346,27 +346,22 @@
     el.addEventListener('input', resetStability);
   });
 
-  function modeOf(arr) {
-    var freq = {}, best = arr[0], bestCount = 0;
-    for (var i = 0; i < arr.length; i++) {
-      var v = arr[i];
-      freq[v] = (freq[v] || 0) + 1;
-      if (freq[v] > bestCount) { bestCount = freq[v]; best = v; }
-    }
-    return { value: best, count: bestCount };
+  function medianOf(arr) {
+    var sorted = arr.slice().sort(function (a, b) { return a - b; });
+    return sorted[Math.floor(sorted.length / 2)];
   }
 
+  // A mediana móvel tolera picos isolados de ruído (tremor, desfoque) muito melhor
+  // do que exigir o mesmo valor se repetindo, já que não precisa de repetição exata.
   function registerCount(count) {
     countHistory.push(count);
     if (countHistory.length > HISTORY_SIZE) countHistory.shift();
 
-    var m = modeOf(countHistory);
-    if (m.count >= STABILITY_MIN || countHistory.length < STABILITY_MIN) {
-      if (m.count >= STABILITY_MIN) {
-        stableCount = m.value;
-        countBadge.classList.remove('unstable');
-        countLabel.textContent = 'cápsulas';
-      }
+    if (countHistory.length >= STABILITY_MIN) {
+      stableCount = medianOf(countHistory);
+      var full = countHistory.length >= HISTORY_SIZE;
+      countBadge.classList.toggle('unstable', !full);
+      countLabel.textContent = full ? 'cápsulas' : 'estabilizando...';
     }
 
     if (stableCount !== null) {
