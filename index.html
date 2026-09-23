@@ -110,6 +110,12 @@
     width: 70px; background: var(--panel-2); border: none; color: var(--text);
     border-radius: 8px; padding: 6px 8px; font-size: 14px;
   }
+  #calibStatus { flex: 1; font-size: 12px; color: var(--text-dim); }
+  #btnCalibrate {
+    padding: 8px 14px; border-radius: 8px; border: none;
+    background: var(--panel-2); color: var(--text); font-size: 12px; cursor: pointer; flex: none;
+  }
+  #btnCalibrate.set { background: var(--accent-2); color: #082f49; }
   .switch-row { display: flex; gap: 8px; }
   .switch-row button {
     flex: 1; padding: 8px; border-radius: 10px; border: 1px solid var(--panel-2);
@@ -171,6 +177,12 @@
       <input type="number" id="expected" placeholder="opcional" min="0" inputmode="numeric">
     </div>
 
+    <div class="row">
+      <label>Tam. da cápsula</label>
+      <span id="calibStatus">Não calibrado</span>
+      <button id="btnCalibrate">Calibrar</button>
+    </div>
+
     <div id="mainButtons">
       <button id="btnStart">Ligar câmera</button>
       <button id="btnFreeze" disabled>Congelar</button>
@@ -212,11 +224,14 @@
   var btnDark = document.getElementById('btnDark');
   var advToggle = document.getElementById('advToggle');
   var advPanel = document.getElementById('advPanel');
+  var btnCalibrate = document.getElementById('btnCalibrate');
+  var calibStatus = document.getElementById('calibStatus');
 
   var stream = null;
   var running = false;
   var frozen = false;
   var cvReady = false;
+  var unitArea = null;
   var invertThreshold = false;
   var processCanvas = document.createElement('canvas');
   var pctx = processCanvas.getContext('2d', { willReadFrequently: true });
@@ -256,6 +271,80 @@
     btnLight.classList.remove('active');
     resetStability();
   });
+
+  function computeMask(src, gray, blurred, thresh, kernel, opened, closed) {
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
+    var otsu = cv.threshold(blurred, thresh, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+    var offset = parseInt(sensitivity.value, 10);
+    var mode = invertThreshold ? cv.THRESH_BINARY_INV : cv.THRESH_BINARY;
+    cv.threshold(blurred, thresh, otsu - offset, 255, mode);
+    cv.morphologyEx(thresh, opened, cv.MORPH_OPEN, kernel);
+    cv.morphologyEx(opened, closed, cv.MORPH_CLOSE, kernel);
+  }
+
+  function updateCalibLabel() {
+    if (unitArea) {
+      calibStatus.textContent = 'Calibrado (' + Math.round(unitArea) + ' px²)';
+      btnCalibrate.classList.add('set');
+      btnCalibrate.textContent = 'Recalibrar';
+    } else {
+      calibStatus.textContent = 'Não calibrado';
+      btnCalibrate.classList.remove('set');
+      btnCalibrate.textContent = 'Calibrar';
+    }
+  }
+
+  function loadCalibration() {
+    try {
+      var v = localStorage.getItem('capsuleUnitArea');
+      if (v) unitArea = parseFloat(v);
+    } catch (e) {}
+    updateCalibLabel();
+  }
+
+  function calibrate() {
+    if (!cvReady) { alert('Aguarde o motor de visão carregar.'); return; }
+    if (!video.videoWidth) { alert('Ligue a câmera, coloque 1 cápsula sozinha na bandeja e tente de novo.'); return; }
+
+    var vscale = PROC_WIDTH / video.videoWidth;
+    var pw = PROC_WIDTH, ph = Math.round(video.videoHeight * vscale);
+    var calibCanvas = document.createElement('canvas');
+    calibCanvas.width = pw; calibCanvas.height = ph;
+    calibCanvas.getContext('2d').drawImage(video, 0, 0, pw, ph);
+
+    var src = cv.imread(calibCanvas);
+    var gray = new cv.Mat(), blurred = new cv.Mat(), thresh = new cv.Mat();
+    var kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3, 3));
+    var opened = new cv.Mat(), closed = new cv.Mat();
+    var contours = new cv.MatVector(), hierarchy = new cv.Mat();
+    try {
+      computeMask(src, gray, blurred, thresh, kernel, opened, closed);
+      cv.findContours(closed, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+      var best = 0;
+      for (var i = 0; i < contours.size(); i++) {
+        var cnt = contours.get(i);
+        var area = cv.contourArea(cnt);
+        if (area > best) best = area;
+        cnt.delete();
+      }
+      if (best < 50) {
+        alert('Não encontrei uma cápsula na imagem. Coloque só 1 cápsula, sozinha, bem visível na bandeja e tente de novo.');
+        return;
+      }
+      unitArea = best;
+      try { localStorage.setItem('capsuleUnitArea', String(best)); } catch (e) {}
+      updateCalibLabel();
+      resetStability();
+    } finally {
+      src.delete(); gray.delete(); blurred.delete(); thresh.delete();
+      kernel.delete(); opened.delete(); closed.delete();
+      contours.delete(); hierarchy.delete();
+    }
+  }
+
+  btnCalibrate.addEventListener('click', calibrate);
+  loadCalibration();
 
   function onOpenCvReady() {
     cvReady = true;
@@ -405,81 +494,43 @@
     var kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3, 3));
     var opened = new cv.Mat();
     var closed = new cv.Mat();
-    var distTransform = new cv.Mat();
-    var sureFg = new cv.Mat();
-    var sureFg8 = new cv.Mat();
-    var sureBg = new cv.Mat();
-    var unknown = new cv.Mat();
-    var markers = new cv.Mat();
-    var srcRGB = new cv.Mat();
+    var contours = new cv.MatVector();
+    var hierarchy = new cv.Mat();
 
     try {
-      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-      cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
-
-      var otsu = cv.threshold(blurred, thresh, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
-      var offset = parseInt(sensitivity.value, 10);
-      var mode = invertThreshold ? cv.THRESH_BINARY_INV : cv.THRESH_BINARY;
-      cv.threshold(blurred, thresh, otsu - offset, 255, mode);
-
-      cv.morphologyEx(thresh, opened, cv.MORPH_OPEN, kernel);
-      cv.morphologyEx(opened, closed, cv.MORPH_CLOSE, kernel);
-
-      // Watershed splits capsules that are touching: distance transform peaks mark
-      // individual capsule centers, then watershed grows regions out to the touching edges.
-      cv.distanceTransform(closed, distTransform, cv.DIST_L2, 5);
-      var minMax = cv.minMaxLoc(distTransform);
-      cv.threshold(distTransform, sureFg, 0.5 * minMax.maxVal, 255, cv.THRESH_BINARY);
-      sureFg.convertTo(sureFg8, cv.CV_8U);
-
-      cv.dilate(closed, sureBg, kernel, new cv.Point(-1, -1), 3);
-      cv.subtract(sureBg, sureFg8, unknown);
-
-      cv.connectedComponents(sureFg8, markers);
-      for (var mi = 0; mi < markers.data32S.length; mi++) markers.data32S[mi] += 1;
-      for (var ui = 0; ui < unknown.data.length; ui++) {
-        if (unknown.data[ui] === 255) markers.data32S[ui] = 0;
-      }
-
-      cv.cvtColor(src, srcRGB, cv.COLOR_RGBA2RGB);
-      cv.watershed(srcRGB, markers);
+      computeMask(src, gray, blurred, thresh, kernel, opened, closed);
+      cv.findContours(closed, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
       var minArea = parseInt(minSize.value, 10);
-      var labelPixels = {};
-      var mw = markers.cols;
-      for (var p = 0; p < markers.data32S.length; p++) {
-        var lbl = markers.data32S[p];
-        if (lbl > 1) (labelPixels[lbl] || (labelPixels[lbl] = [])).push(p);
-      }
-
       octx.clearRect(0, 0, overlay.width, overlay.height);
       var ow = overlay.width, oh = overlay.height;
       var sx = ow / pw, sy = oh / ph;
       octx.lineWidth = 2;
       octx.strokeStyle = '#22c55e';
+      octx.font = 'bold 13px sans-serif';
+      octx.fillStyle = '#22c55e';
 
+      // Blobs bigger than one capsule (touching/overlapping) are worth more than 1,
+      // estimated from the calibrated single-capsule area instead of always counting 1 per blob.
       var count = 0;
-      for (var lbl in labelPixels) {
-        var pixels = labelPixels[lbl];
-        if (pixels.length < minArea) continue;
-        count++;
-        var minX = mw, maxX = 0, minY = 1e9, maxY = 0;
-        for (var pi = 0; pi < pixels.length; pi++) {
-          var px = pixels[pi] % mw, py = (pixels[pi] / mw) | 0;
-          if (px < minX) minX = px;
-          if (px > maxX) maxX = px;
-          if (py < minY) minY = py;
-          if (py > maxY) maxY = py;
+      for (var i = 0; i < contours.size(); i++) {
+        var cnt = contours.get(i);
+        var area = cv.contourArea(cnt);
+        if (area >= minArea) {
+          var sub = unitArea ? Math.max(1, Math.round(area / unitArea)) : 1;
+          count += sub;
+          var rect = cv.boundingRect(cnt);
+          octx.strokeRect(rect.x * sx, rect.y * sy, rect.width * sx, rect.height * sy);
+          if (sub > 1) octx.fillText('×' + sub, rect.x * sx + 2, rect.y * sy + 14);
         }
-        octx.strokeRect(minX * sx, minY * sy, (maxX - minX) * sx, (maxY - minY) * sy);
+        cnt.delete();
       }
 
       registerCount(count);
     } finally {
       src.delete(); gray.delete(); blurred.delete(); thresh.delete();
       kernel.delete(); opened.delete(); closed.delete();
-      distTransform.delete(); sureFg.delete(); sureFg8.delete(); sureBg.delete();
-      unknown.delete(); markers.delete(); srcRGB.delete();
+      contours.delete(); hierarchy.delete();
     }
   }
 
