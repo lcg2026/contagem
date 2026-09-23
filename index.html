@@ -346,8 +346,13 @@
     var kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3, 3));
     var opened = new cv.Mat();
     var closed = new cv.Mat();
-    var contours = new cv.MatVector();
-    var hierarchy = new cv.Mat();
+    var distTransform = new cv.Mat();
+    var sureFg = new cv.Mat();
+    var sureFg8 = new cv.Mat();
+    var sureBg = new cv.Mat();
+    var unknown = new cv.Mat();
+    var markers = new cv.Mat();
+    var srcRGB = new cv.Mat();
 
     try {
       cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
@@ -361,27 +366,53 @@
       cv.morphologyEx(thresh, opened, cv.MORPH_OPEN, kernel);
       cv.morphologyEx(opened, closed, cv.MORPH_CLOSE, kernel);
 
-      cv.findContours(closed, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+      // Watershed splits capsules that are touching: distance transform peaks mark
+      // individual capsule centers, then watershed grows regions out to the touching edges.
+      cv.distanceTransform(closed, distTransform, cv.DIST_L2, 5);
+      var minMax = cv.minMaxLoc(distTransform);
+      cv.threshold(distTransform, sureFg, 0.5 * minMax.maxVal, 255, cv.THRESH_BINARY);
+      sureFg.convertTo(sureFg8, cv.CV_8U);
+
+      cv.dilate(closed, sureBg, kernel, new cv.Point(-1, -1), 3);
+      cv.subtract(sureBg, sureFg8, unknown);
+
+      cv.connectedComponents(sureFg8, markers);
+      for (var mi = 0; mi < markers.data32S.length; mi++) markers.data32S[mi] += 1;
+      for (var ui = 0; ui < unknown.data.length; ui++) {
+        if (unknown.data[ui] === 255) markers.data32S[ui] = 0;
+      }
+
+      cv.cvtColor(src, srcRGB, cv.COLOR_RGBA2RGB);
+      cv.watershed(srcRGB, markers);
 
       var minArea = parseInt(minSize.value, 10);
-      var count = 0;
+      var labelPixels = {};
+      var mw = markers.cols;
+      for (var p = 0; p < markers.data32S.length; p++) {
+        var lbl = markers.data32S[p];
+        if (lbl > 1) (labelPixels[lbl] || (labelPixels[lbl] = [])).push(p);
+      }
+
       octx.clearRect(0, 0, overlay.width, overlay.height);
       var ow = overlay.width, oh = overlay.height;
       var sx = ow / pw, sy = oh / ph;
       octx.lineWidth = 2;
       octx.strokeStyle = '#22c55e';
-      octx.font = '13px sans-serif';
-      octx.fillStyle = '#22c55e';
 
-      for (var i = 0; i < contours.size(); i++) {
-        var cnt = contours.get(i);
-        var area = cv.contourArea(cnt);
-        if (area >= minArea) {
-          count++;
-          var rect = cv.boundingRect(cnt);
-          octx.strokeRect(rect.x * sx, rect.y * sy, rect.width * sx, rect.height * sy);
+      var count = 0;
+      for (var lbl in labelPixels) {
+        var pixels = labelPixels[lbl];
+        if (pixels.length < minArea) continue;
+        count++;
+        var minX = mw, maxX = 0, minY = 1e9, maxY = 0;
+        for (var pi = 0; pi < pixels.length; pi++) {
+          var px = pixels[pi] % mw, py = (pixels[pi] / mw) | 0;
+          if (px < minX) minX = px;
+          if (px > maxX) maxX = px;
+          if (py < minY) minY = py;
+          if (py > maxY) maxY = py;
         }
-        cnt.delete();
+        octx.strokeRect(minX * sx, minY * sy, (maxX - minX) * sx, (maxY - minY) * sy);
       }
 
       countNumber.textContent = count;
@@ -389,7 +420,8 @@
     } finally {
       src.delete(); gray.delete(); blurred.delete(); thresh.delete();
       kernel.delete(); opened.delete(); closed.delete();
-      contours.delete(); hierarchy.delete();
+      distTransform.delete(); sureFg.delete(); sureFg8.delete(); sureBg.delete();
+      unknown.delete(); markers.delete(); srcRGB.delete();
     }
   }
 
