@@ -48,14 +48,22 @@
     -webkit-user-select: none;
     user-select: none;
   }
-  #video, #overlay {
+  #photo, #overlay {
     position: absolute;
     top: 50%; left: 50%;
     transform: translate(-50%, -50%);
     max-width: 100%; max-height: 100%;
   }
-  #video { object-fit: contain; }
+  #photo { object-fit: contain; display: none; }
   #overlay { pointer-events: none; }
+
+  #placeholder {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    text-align: center; padding: 30px;
+    color: var(--text-dim); font-size: 14px;
+  }
+  #placeholder.hidden { display: none; }
 
   #countBadge {
     position: absolute;
@@ -70,9 +78,6 @@
   }
   #countNumber { font-size: 42px; font-weight: 700; line-height: 1; }
   #countLabel { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
-  #countBadge.unstable { border-color: var(--warn); animation: pulse 1s ease-in-out infinite; }
-  #countBadge.unstable #countLabel { color: var(--warn); }
-  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
   #matchBadge {
     position: absolute;
     top: 12px; right: 12px;
@@ -102,6 +107,50 @@
     color: #082f49; background: var(--accent-2); font-weight: 600;
     animation: pulse 1s ease-in-out infinite;
   }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+  #toast {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    max-width: 85%;
+    background: rgba(15,23,42,0.97);
+    border: 2px solid var(--accent-2);
+    border-radius: 14px;
+    padding: 16px 20px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 600;
+    z-index: 20;
+    display: none;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  }
+  #toast.show { display: block; }
+  #toast.ok { border-color: var(--accent); }
+  #toast.err { border-color: var(--danger); }
+
+  #nameModal {
+    position: absolute; inset: 0; z-index: 25;
+    background: rgba(15,23,42,0.92);
+    display: none;
+    align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  #nameModal.show { display: flex; }
+  #nameModal .box {
+    background: var(--panel); border-radius: 14px; padding: 18px;
+    width: 100%; max-width: 320px; display: flex; flex-direction: column; gap: 12px;
+  }
+  #nameModal input {
+    background: var(--panel-2); border: none; color: var(--text);
+    border-radius: 8px; padding: 10px; font-size: 14px;
+  }
+  #nameModal .box-buttons { display: flex; gap: 8px; }
+  #nameModal .box-buttons button {
+    flex: 1; padding: 10px; border-radius: 8px; border: none; font-size: 14px; cursor: pointer;
+  }
+  #nameModal .btn-confirm { background: var(--accent); color: #052e16; font-weight: 600; }
+  #nameModal .btn-cancel { background: var(--panel-2); color: var(--text); }
 
   #controls {
     flex: none;
@@ -113,18 +162,23 @@
     gap: 10px;
   }
   .row { display: flex; align-items: center; gap: 10px; }
-  .row label { font-size: 12px; color: var(--text-dim); width: 120px; flex: none; }
+  .row label { font-size: 12px; color: var(--text-dim); width: 100px; flex: none; }
   .row input[type=range] { flex: 1; accent-color: var(--accent-2); }
   .row input[type=number] {
     width: 70px; background: var(--panel-2); border: none; color: var(--text);
     border-radius: 8px; padding: 6px 8px; font-size: 14px;
   }
+  .row select {
+    flex: 1; background: var(--panel-2); border: none; color: var(--text);
+    border-radius: 8px; padding: 8px; font-size: 13px;
+  }
   #calibStatus { flex: 1; font-size: 12px; color: var(--text-dim); }
-  #btnCalibrate {
+  #btnCalibrate, #btnSavePreset {
     padding: 8px 14px; border-radius: 8px; border: none;
     background: var(--panel-2); color: var(--text); font-size: 12px; cursor: pointer; flex: none;
   }
   #btnCalibrate.set { background: var(--accent-2); color: #082f49; }
+  #btnSavePreset:disabled { opacity: 0.4; }
   .switch-row { display: flex; gap: 8px; }
   .switch-row button {
     flex: 1; padding: 8px; border-radius: 10px; border: 1px solid var(--panel-2);
@@ -137,10 +191,7 @@
     flex: 1; padding: 14px; border-radius: 12px; border: none;
     font-size: 15px; font-weight: 600; cursor: pointer;
   }
-  #btnStart { background: var(--accent); color: #052e16; }
-  #btnStart.stop { background: var(--danger); color: #450a0a; }
-  #btnFreeze { background: var(--panel-2); color: var(--text); }
-  #btnFreeze.frozen { background: var(--accent-2); color: #082f49; }
+  #btnCapture { background: var(--accent); color: #052e16; }
 
   #advToggle {
     text-align: center; font-size: 12px; color: var(--text-dim);
@@ -170,7 +221,8 @@
 
   <div id="stage">
     <div id="loading"><div class="spinner"></div><div>Carregando motor de visão...</div></div>
-    <video id="video" playsinline muted></video>
+    <div id="placeholder">Toque em "Tirar foto" para fotografar a bandeja</div>
+    <img id="photo" alt="">
     <canvas id="overlay"></canvas>
     <div id="countBadge">
       <div id="countNumber">--</div>
@@ -178,6 +230,17 @@
     </div>
     <div id="matchBadge"></div>
     <div id="hint">Espalhe as cápsulas na bandeja sem encostar umas nas outras, sobre fundo liso e contrastante.</div>
+    <div id="toast"></div>
+    <div id="nameModal">
+      <div class="box">
+        <label style="font-size:13px;color:var(--text-dim);">Nome da predefinição</label>
+        <input type="text" id="nameInput" placeholder='ex: "Cápsula 0 - Vitamina D"'>
+        <div class="box-buttons">
+          <button class="btn-cancel" id="nameCancel">Cancelar</button>
+          <button class="btn-confirm" id="nameConfirm">Salvar</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div id="controls">
@@ -187,15 +250,21 @@
     </div>
 
     <div class="row">
+      <label>Predefinição</label>
+      <select id="presetSelect"><option value="">— nenhuma —</option></select>
+    </div>
+
+    <div class="row">
       <label>Tam. da cápsula</label>
       <span id="calibStatus">Não calibrado</span>
       <button id="btnCalibrate">Calibrar</button>
     </div>
 
     <div id="mainButtons">
-      <button id="btnStart">Ligar câmera</button>
-      <button id="btnFreeze" disabled>Congelar</button>
+      <button id="btnCapture">Tirar foto</button>
+      <button id="btnSavePreset" disabled>Salvar predefinição</button>
     </div>
+    <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none">
 
     <div id="advToggle">▾ Ajustes avançados</div>
     <div id="advPanel">
@@ -218,12 +287,14 @@
 <script src="opencv.js"></script>
 <script>
 (function () {
-  var video = document.getElementById('video');
+  var photo = document.getElementById('photo');
+  var placeholder = document.getElementById('placeholder');
   var overlay = document.getElementById('overlay');
   var octx = overlay.getContext('2d');
   var loading = document.getElementById('loading');
-  var btnStart = document.getElementById('btnStart');
-  var btnFreeze = document.getElementById('btnFreeze');
+  var btnCapture = document.getElementById('btnCapture');
+  var btnSavePreset = document.getElementById('btnSavePreset');
+  var photoInput = document.getElementById('photoInput');
   var countNumber = document.getElementById('countNumber');
   var matchBadge = document.getElementById('matchBadge');
   var expectedInput = document.getElementById('expected');
@@ -235,54 +306,75 @@
   var advPanel = document.getElementById('advPanel');
   var btnCalibrate = document.getElementById('btnCalibrate');
   var calibStatus = document.getElementById('calibStatus');
+  var presetSelect = document.getElementById('presetSelect');
   var stage = document.getElementById('stage');
   var hint = document.getElementById('hint');
   var defaultHint = hint.textContent;
+  var toast = document.getElementById('toast');
+  var nameModal = document.getElementById('nameModal');
+  var nameInput = document.getElementById('nameInput');
+  var nameCancel = document.getElementById('nameCancel');
+  var nameConfirm = document.getElementById('nameConfirm');
 
-  var stream = null;
-  var running = false;
-  var frozen = false;
   var cvReady = false;
   var unitArea = null;
   var calibrating = false;
   var invertThreshold = false;
+  var hasPhoto = false;
   var processCanvas = document.createElement('canvas');
   var pctx = processCanvas.getContext('2d', { willReadFrequently: true });
-  var lastProcessTime = 0;
-  var PROCESS_INTERVAL_MS = 250;
   var PROC_WIDTH = 480;
-  var countBadge = document.getElementById('countBadge');
-  var countLabel = document.getElementById('countLabel');
-  var countHistory = [];
-  var HISTORY_SIZE = 9;
-  var STABILITY_MIN = 5;
-  var stableCount = null;
+  var toastTimer = null;
+
+  // Substitui alert()/prompt(): em apps adicionados à tela de início do iPhone (modo standalone),
+  // diálogos nativos do navegador podem não funcionar — esses avisos ficam dentro da própria página.
+  function showToast(message, type, durationMs) {
+    clearTimeout(toastTimer);
+    toast.textContent = message;
+    toast.className = 'show' + (type ? ' ' + type : '');
+    if (durationMs !== 0) {
+      toastTimer = setTimeout(function () { toast.classList.remove('show'); }, durationMs || 2600);
+    }
+  }
+
+  function askName(callback) {
+    nameInput.value = '';
+    nameModal.classList.add('show');
+    nameInput.focus();
+    function cleanup() {
+      nameModal.classList.remove('show');
+      nameConfirm.removeEventListener('click', onConfirm);
+      nameCancel.removeEventListener('click', onCancel);
+    }
+    function onConfirm() {
+      var v = nameInput.value.trim();
+      cleanup();
+      if (v) callback(v);
+    }
+    function onCancel() { cleanup(); }
+    nameConfirm.addEventListener('click', onConfirm);
+    nameCancel.addEventListener('click', onCancel);
+  }
 
   advToggle.addEventListener('click', function () {
     advPanel.classList.toggle('open');
     advToggle.textContent = advPanel.classList.contains('open') ? '▴ Ajustes avançados' : '▾ Ajustes avançados';
   });
 
-  function resetStability() {
-    countHistory = [];
-    stableCount = null;
-    if (running && !frozen) {
-      countBadge.classList.add('unstable');
-      countLabel.textContent = 'estabilizando...';
-    }
-  }
-
   btnLight.addEventListener('click', function () {
     invertThreshold = false;
     btnLight.classList.add('active');
     btnDark.classList.remove('active');
-    resetStability();
+    analyzeCurrentPhoto();
   });
   btnDark.addEventListener('click', function () {
     invertThreshold = true;
     btnDark.classList.add('active');
     btnLight.classList.remove('active');
-    resetStability();
+    analyzeCurrentPhoto();
+  });
+  [sensitivity, minSize].forEach(function (el) {
+    el.addEventListener('input', analyzeCurrentPhoto);
   });
 
   function computeMask(src, gray, blurred, thresh, kernel, opened, closed) {
@@ -296,33 +388,72 @@
     cv.morphologyEx(opened, closed, cv.MORPH_CLOSE, kernel);
   }
 
+  // --- Predefinições (banco local de calibrações por cápsula/lote) ---
+  function loadPresets() {
+    try {
+      var v = localStorage.getItem('capsulePresets');
+      return v ? JSON.parse(v) : {};
+    } catch (e) { return {}; }
+  }
+
+  function savePresets(presets) {
+    try { localStorage.setItem('capsulePresets', JSON.stringify(presets)); } catch (e) {}
+  }
+
+  function refreshPresetSelect(selectName) {
+    var presets = loadPresets();
+    presetSelect.innerHTML = '<option value="">— nenhuma —</option>';
+    Object.keys(presets).sort().forEach(function (name) {
+      var opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name + ' (' + Math.round(presets[name]) + ' px²)';
+      presetSelect.appendChild(opt);
+    });
+    if (selectName) presetSelect.value = selectName;
+  }
+
+  presetSelect.addEventListener('change', function () {
+    var presets = loadPresets();
+    var name = presetSelect.value;
+    if (!name || !presets[name]) return;
+    unitArea = presets[name];
+    updateCalibLabel();
+    analyzeCurrentPhoto();
+  });
+
+  btnSavePreset.addEventListener('click', function () {
+    if (!unitArea) { showToast('Calibre primeiro tocando numa cápsula.', 'err'); return; }
+    askName(function (name) {
+      var presets = loadPresets();
+      presets[name] = unitArea;
+      savePresets(presets);
+      refreshPresetSelect(name);
+      showToast('Predefinição "' + name + '" salva.', 'ok');
+    });
+  });
+
+  // --- Calibração: toque numa cápsula na PRÓPRIA foto já tirada ---
   function updateCalibLabel() {
     if (unitArea) {
       calibStatus.textContent = 'Calibrado (' + Math.round(unitArea) + ' px²)';
       btnCalibrate.classList.add('set');
       btnCalibrate.textContent = 'Recalibrar';
+      btnSavePreset.disabled = false;
     } else {
       calibStatus.textContent = 'Não calibrado';
       btnCalibrate.classList.remove('set');
       btnCalibrate.textContent = 'Calibrar';
+      btnSavePreset.disabled = true;
     }
   }
 
-  function loadCalibration() {
-    try {
-      var v = localStorage.getItem('capsuleUnitArea');
-      if (v) unitArea = parseFloat(v);
-    } catch (e) {}
-    updateCalibLabel();
-  }
-
   function startCalibrating() {
-    if (!cvReady) { alert('Aguarde o motor de visão carregar.'); return; }
-    if (!running || !video.videoWidth) { alert('Ligue a câmera e enquadre a bandeja (do mesmo jeito que vai usar pra contar) antes de calibrar.'); return; }
+    if (!cvReady) { showToast('Aguarde o motor de visão carregar.', 'err'); return; }
+    if (!hasPhoto) { showToast('Tire uma foto da bandeja primeiro.', 'err'); return; }
     calibrating = true;
     stage.classList.add('calibrating');
-    hint.textContent = 'Toque numa cápsula isolada, de tamanho típico, perto do centro da tela';
-    alert('Modo calibração ativado. Toque numa cápsula isolada na tela.');
+    hint.textContent = 'Toque numa cápsula isolada, de tamanho típico, perto do centro da foto';
+    showToast('Modo calibração ativado. Toque numa cápsula isolada na foto.', null, 2000);
   }
 
   function stopCalibrating() {
@@ -331,26 +462,20 @@
     hint.textContent = defaultHint;
   }
 
-  // Calibra tocando numa cápsula dentro do MESMO enquadramento usado pra contar —
-  // assim a escala (distância da câmera) é sempre igual entre calibração e contagem.
   function calibrateAtPoint(clientX, clientY) {
-    var rect = video.getBoundingClientRect();
+    var rect = photo.getBoundingClientRect();
     var xFrac = (clientX - rect.left) / rect.width;
     var yFrac = (clientY - rect.top) / rect.height;
     if (xFrac < 0 || xFrac > 1 || yFrac < 0 || yFrac > 1) {
-      alert('Toque fora da área da câmera (' + Math.round(xFrac * 100) + '%, ' + Math.round(yFrac * 100) + '%). Tente tocar de novo, dentro da imagem da bandeja.');
+      showToast('Toque fora da foto. Tente de novo, dentro da imagem da bandeja.', 'err');
       return;
     }
 
-    var vscale = PROC_WIDTH / video.videoWidth;
-    var pw = PROC_WIDTH, ph = Math.round(video.videoHeight * vscale);
+    var vscale = PROC_WIDTH / photo.naturalWidth;
+    var pw = PROC_WIDTH, ph = Math.round(photo.naturalHeight * vscale);
     var tapX = xFrac * pw, tapY = yFrac * ph;
 
-    var calibCanvas = document.createElement('canvas');
-    calibCanvas.width = pw; calibCanvas.height = ph;
-    calibCanvas.getContext('2d').drawImage(video, 0, 0, pw, ph);
-
-    var src = cv.imread(calibCanvas);
+    var src = cv.imread(processCanvas);
     var gray = new cv.Mat(), blurred = new cv.Mat(), thresh = new cv.Mat();
     var kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3, 3));
     var opened = new cv.Mat(), closed = new cv.Mat();
@@ -365,21 +490,18 @@
         var r = cv.boundingRect(cnt);
         var a = cv.contourArea(cnt);
         if (tapX >= r.x && tapX <= r.x + r.width && tapY >= r.y && tapY <= r.y + r.height) {
-          // Se o toque cair em mais de um retângulo sobreposto, prefere o menor
-          // blob (mais provável de ser 1 cápsula isolada, não um blob grande).
           if (a < foundArea) { found = a; foundArea = a; }
         }
         cnt.delete();
       }
       if (found < 50) {
-        alert('Não encontrei uma cápsula bem nesse ponto (toque em ' + Math.round(tapX) + ',' + Math.round(tapY) + '). Toque com mais precisão no centro de uma cápsula isolada.');
+        showToast('Não encontrei uma cápsula bem nesse ponto. Toque com mais precisão no centro de uma cápsula isolada.', 'err');
         return;
       }
       unitArea = found;
-      try { localStorage.setItem('capsuleUnitArea', String(found)); } catch (e) {}
       updateCalibLabel();
-      resetStability();
-      alert('Calibrado! Referência: ' + Math.round(found) + ' px².');
+      analyzeCurrentPhoto();
+      showToast('Calibrado! Referência: ' + Math.round(found) + ' px².', 'ok');
     } finally {
       src.delete(); gray.delete(); blurred.delete(); thresh.delete();
       kernel.delete(); opened.delete(); closed.delete();
@@ -393,124 +515,39 @@
     calibrateAtPoint(e.clientX, e.clientY);
     stopCalibrating();
   });
-  loadCalibration();
 
-  function onOpenCvReady() {
-    cvReady = true;
-    loading.classList.add('hidden');
-  }
-  if (typeof cv !== 'undefined' && cv.onRuntimeInitialized !== undefined) {
-    cv.onRuntimeInitialized = onOpenCvReady;
-  } else {
-    var waitCv = setInterval(function () {
-      if (typeof cv !== 'undefined') {
-        cv.onRuntimeInitialized = onOpenCvReady;
-        clearInterval(waitCv);
-      }
-    }, 100);
-  }
+  // --- Captura de foto (câmera nativa do celular, sem vídeo ao vivo) ---
+  btnCapture.addEventListener('click', function () {
+    if (!cvReady) { showToast('Aguarde o motor de visão carregar.', 'err'); return; }
+    photoInput.value = '';
+    photoInput.click();
+  });
+
+  photoInput.addEventListener('change', function () {
+    var file = photoInput.files && photoInput.files[0];
+    if (!file) return;
+    var url = URL.createObjectURL(file);
+    photo.onload = function () {
+      URL.revokeObjectURL(url);
+      hasPhoto = true;
+      placeholder.classList.add('hidden');
+      photo.style.display = 'block';
+      resizeCanvases();
+      analyzeCurrentPhoto();
+    };
+    photo.src = url;
+  });
 
   function resizeCanvases() {
-    var w = video.videoWidth, h = video.videoHeight;
+    var w = photo.naturalWidth, h = photo.naturalHeight;
     if (!w || !h) return;
-    var rect = video.getBoundingClientRect();
+    var rect = photo.getBoundingClientRect();
     overlay.width = w;
     overlay.height = h;
     overlay.style.width = rect.width + 'px';
     overlay.style.height = rect.height + 'px';
   }
-
   window.addEventListener('resize', resizeCanvases);
-
-  async function startCamera() {
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false
-      });
-      video.srcObject = stream;
-      await video.play();
-      resizeCanvases();
-      running = true;
-      frozen = false;
-      resetStability();
-      btnStart.textContent = 'Desligar câmera';
-      btnStart.classList.add('stop');
-      btnFreeze.disabled = false;
-      btnFreeze.textContent = 'Congelar';
-      btnFreeze.classList.remove('frozen');
-      requestAnimationFrame(loop);
-    } catch (err) {
-      alert('Não foi possível acessar a câmera: ' + err.message);
-    }
-  }
-
-  function stopCamera() {
-    running = false;
-    frozen = false;
-    if (calibrating) stopCalibrating();
-    if (stream) {
-      stream.getTracks().forEach(function (t) { t.stop(); });
-      stream = null;
-    }
-    video.srcObject = null;
-    octx.clearRect(0, 0, overlay.width, overlay.height);
-    countNumber.textContent = '--';
-    countLabel.textContent = 'cápsulas';
-    countBadge.classList.remove('unstable');
-    countHistory = [];
-    stableCount = null;
-    matchBadge.className = '';
-    btnStart.textContent = 'Ligar câmera';
-    btnStart.classList.remove('stop');
-    btnFreeze.disabled = true;
-    btnFreeze.classList.remove('frozen');
-  }
-
-  btnStart.addEventListener('click', function () {
-    if (running) stopCamera(); else startCamera();
-  });
-
-  btnFreeze.addEventListener('click', function () {
-    frozen = !frozen;
-    btnFreeze.textContent = frozen ? 'Retomar' : 'Congelar';
-    btnFreeze.classList.toggle('frozen', frozen);
-    if (!frozen) {
-      resetStability();
-      requestAnimationFrame(loop);
-    }
-  });
-
-  [sensitivity, minSize].forEach(function (el) {
-    el.addEventListener('input', resetStability);
-  });
-
-  function medianOf(arr) {
-    var sorted = arr.slice().sort(function (a, b) { return a - b; });
-    return sorted[Math.floor(sorted.length / 2)];
-  }
-
-  // A mediana móvel tolera picos isolados de ruído (tremor, desfoque) muito melhor
-  // do que exigir o mesmo valor se repetindo, já que não precisa de repetição exata.
-  function registerCount(count) {
-    countHistory.push(count);
-    if (countHistory.length > HISTORY_SIZE) countHistory.shift();
-
-    if (countHistory.length >= STABILITY_MIN) {
-      stableCount = medianOf(countHistory);
-      var full = countHistory.length >= HISTORY_SIZE;
-      countBadge.classList.toggle('unstable', !full);
-      countLabel.textContent = full ? 'cápsulas' : 'estabilizando...';
-    }
-
-    if (stableCount !== null) {
-      countNumber.textContent = stableCount;
-      updateMatchBadge(stableCount);
-    } else {
-      countNumber.textContent = count;
-      updateMatchBadge(count);
-    }
-  }
 
   function updateMatchBadge(count) {
     var expected = parseInt(expectedInput.value, 10);
@@ -527,15 +564,19 @@
       matchBadge.textContent = (count > expected ? '+' : '') + (count - expected) + ' de ' + expected;
     }
   }
+  expectedInput.addEventListener('input', function () {
+    if (hasPhoto) updateMatchBadge(parseInt(countNumber.textContent, 10) || 0);
+  });
 
-  function processFrame() {
-    if (!video.videoWidth) return;
-    var scale = PROC_WIDTH / video.videoWidth;
+  function analyzeCurrentPhoto() {
+    if (!cvReady || !hasPhoto || !photo.naturalWidth) return;
+
+    var scale = PROC_WIDTH / photo.naturalWidth;
     var pw = PROC_WIDTH;
-    var ph = Math.round(video.videoHeight * scale);
+    var ph = Math.round(photo.naturalHeight * scale);
     processCanvas.width = pw;
     processCanvas.height = ph;
-    pctx.drawImage(video, 0, 0, pw, ph);
+    pctx.drawImage(photo, 0, 0, pw, ph);
 
     var src = cv.imread(processCanvas);
     var gray = new cv.Mat();
@@ -560,8 +601,8 @@
       octx.font = 'bold 13px sans-serif';
       octx.fillStyle = '#22c55e';
 
-      // Blobs bigger than one capsule (touching/overlapping) are worth more than 1,
-      // estimated from the calibrated single-capsule area instead of always counting 1 per blob.
+      // Blobs maiores que 1 cápsula (encostadas/sobrepostas) valem mais que 1,
+      // estimado pela área calibrada de 1 cápsula, em vez de sempre contar 1 por blob.
       var count = 0;
       for (var i = 0; i < contours.size(); i++) {
         var cnt = contours.get(i);
@@ -576,7 +617,8 @@
         cnt.delete();
       }
 
-      registerCount(count);
+      countNumber.textContent = count;
+      updateMatchBadge(count);
     } finally {
       src.delete(); gray.delete(); blurred.delete(); thresh.delete();
       kernel.delete(); opened.delete(); closed.delete();
@@ -584,17 +626,23 @@
     }
   }
 
-  function loop(ts) {
-    if (!running || frozen) return;
-    if (!cvReady) { requestAnimationFrame(loop); return; }
-    if (ts - lastProcessTime >= PROCESS_INTERVAL_MS) {
-      lastProcessTime = ts;
-      try { processFrame(); } catch (e) { console.error(e); }
-    }
-    requestAnimationFrame(loop);
+  function onOpenCvReady() {
+    cvReady = true;
+    loading.classList.add('hidden');
+  }
+  if (typeof cv !== 'undefined' && cv.onRuntimeInitialized !== undefined) {
+    cv.onRuntimeInitialized = onOpenCvReady;
+  } else {
+    var waitCv = setInterval(function () {
+      if (typeof cv !== 'undefined') {
+        cv.onRuntimeInitialized = onOpenCvReady;
+        clearInterval(waitCv);
+      }
+    }, 100);
   }
 
-  video.addEventListener('loadedmetadata', resizeCanvases);
+  refreshPresetSelect();
+  updateCalibLabel();
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function () {
