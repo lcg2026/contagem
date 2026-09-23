@@ -43,6 +43,10 @@
     min-height: 0;
     background: #000;
     overflow: hidden;
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
   #video, #overlay {
     position: absolute;
@@ -318,6 +322,7 @@
     calibrating = true;
     stage.classList.add('calibrating');
     hint.textContent = 'Toque numa cápsula isolada, de tamanho típico, perto do centro da tela';
+    alert('Modo calibração ativado. Toque numa cápsula isolada na tela.');
   }
 
   function stopCalibrating() {
@@ -332,7 +337,10 @@
     var rect = video.getBoundingClientRect();
     var xFrac = (clientX - rect.left) / rect.width;
     var yFrac = (clientY - rect.top) / rect.height;
-    if (xFrac < 0 || xFrac > 1 || yFrac < 0 || yFrac > 1) return;
+    if (xFrac < 0 || xFrac > 1 || yFrac < 0 || yFrac > 1) {
+      alert('Toque fora da área da câmera (' + Math.round(xFrac * 100) + '%, ' + Math.round(yFrac * 100) + '%). Tente tocar de novo, dentro da imagem da bandeja.');
+      return;
+    }
 
     var vscale = PROC_WIDTH / video.videoWidth;
     var pw = PROC_WIDTH, ph = Math.round(video.videoHeight * vscale);
@@ -351,22 +359,27 @@
       computeMask(src, gray, blurred, thresh, kernel, opened, closed);
       cv.findContours(closed, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
       var found = 0;
+      var foundArea = Infinity;
       for (var i = 0; i < contours.size(); i++) {
         var cnt = contours.get(i);
         var r = cv.boundingRect(cnt);
+        var a = cv.contourArea(cnt);
         if (tapX >= r.x && tapX <= r.x + r.width && tapY >= r.y && tapY <= r.y + r.height) {
-          found = cv.contourArea(cnt);
+          // Se o toque cair em mais de um retângulo sobreposto, prefere o menor
+          // blob (mais provável de ser 1 cápsula isolada, não um blob grande).
+          if (a < foundArea) { found = a; foundArea = a; }
         }
         cnt.delete();
       }
       if (found < 50) {
-        alert('Não encontrei uma cápsula bem nesse ponto. Toque com mais precisão no centro de uma cápsula isolada.');
+        alert('Não encontrei uma cápsula bem nesse ponto (toque em ' + Math.round(tapX) + ',' + Math.round(tapY) + '). Toque com mais precisão no centro de uma cápsula isolada.');
         return;
       }
       unitArea = found;
       try { localStorage.setItem('capsuleUnitArea', String(found)); } catch (e) {}
       updateCalibLabel();
       resetStability();
+      alert('Calibrado! Referência: ' + Math.round(found) + ' px².');
     } finally {
       src.delete(); gray.delete(); blurred.delete(); thresh.delete();
       kernel.delete(); opened.delete(); closed.delete();
@@ -375,7 +388,7 @@
   }
 
   btnCalibrate.addEventListener('click', startCalibrating);
-  stage.addEventListener('click', function (e) {
+  stage.addEventListener('pointerup', function (e) {
     if (!calibrating) return;
     calibrateAtPoint(e.clientX, e.clientY);
     stopCalibrating();
