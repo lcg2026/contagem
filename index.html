@@ -13,7 +13,6 @@
     --panel-2: #334155;
     --accent: #22c55e;
     --accent-2: #38bdf8;
-    --coin: #eab308;
     --warn: #f59e0b;
     --danger: #ef4444;
     --text: #f1f5f9;
@@ -182,7 +181,7 @@
 
   <div id="stage">
     <div id="loading"><div class="spinner"></div><div>Carregando motor de visão...</div></div>
-    <div id="placeholder">Espalhe as cápsulas, coloque 1 moeda de referência junto, e toque em "Tirar foto"</div>
+    <div id="placeholder">Enquadre a bandeja preenchendo toda a tela e toque em "Tirar foto"</div>
     <img id="photo" alt="">
     <canvas id="overlay"></canvas>
     <div id="countBadge">
@@ -190,7 +189,7 @@
       <div id="countLabel">cápsulas</div>
     </div>
     <div id="matchBadge"></div>
-    <div id="hint">Espalhe as cápsulas sem encostar, e coloque 1 moeda de referência (sem sobrepor) sobre fundo liso e contrastante.</div>
+    <div id="hint">Espalhe as cápsulas sem encostar, e enquadre a bandeja preenchendo toda a tela (sem sobrar mesa/fundo nas bordas).</div>
     <div id="toast"></div>
   </div>
 
@@ -215,8 +214,8 @@
     </div>
 
     <div class="row">
-      <label>Moeda ref. (mm)</label>
-      <input type="number" id="refDiameter" value="27" min="10" max="40" step="0.5">
+      <label>Largura bandeja (mm)</label>
+      <input type="number" id="trayWidth" placeholder="ex: 150" min="30" max="500" step="1">
     </div>
 
     <div id="mainButtons">
@@ -257,7 +256,7 @@
   var matchBadge = document.getElementById('matchBadge');
   var expectedInput = document.getElementById('expected');
   var capsuleSize = document.getElementById('capsuleSize');
-  var refDiameter = document.getElementById('refDiameter');
+  var trayWidth = document.getElementById('trayWidth');
   var sensitivity = document.getElementById('sensitivity');
   var minSize = document.getElementById('minSize');
   var btnLight = document.getElementById('btnLight');
@@ -319,9 +318,20 @@
     btnLight.classList.remove('active');
     analyzeCurrentPhoto();
   });
-  [sensitivity, minSize, capsuleSize, refDiameter].forEach(function (el) {
+  [sensitivity, minSize, capsuleSize].forEach(function (el) {
     el.addEventListener('input', analyzeCurrentPhoto);
     el.addEventListener('change', analyzeCurrentPhoto);
+  });
+
+  // Largura da bandeja: medida uma vez com régua e guardada no celular — não precisa
+  // remedir toda hora, só se trocar de bandeja.
+  try {
+    var savedWidth = localStorage.getItem('trayWidthMm');
+    if (savedWidth) trayWidth.value = savedWidth;
+  } catch (e) {}
+  trayWidth.addEventListener('change', function () {
+    try { localStorage.setItem('trayWidthMm', trayWidth.value); } catch (e) {}
+    analyzeCurrentPhoto();
   });
 
   function computeMask(src, gray, blurred, thresh, kernel, opened, closed) {
@@ -387,26 +397,6 @@
     if (hasPhoto) updateMatchBadge(parseInt(countNumber.textContent, 10) || 0);
   });
 
-  // Acha o blob mais "redondo" (circularidade = 4·π·área / perímetro², perto de 1.0)
-  // entre os candidatos — é a moeda, já que cápsulas são alongadas (círculo baixo).
-  function findCoin(contours, minArea) {
-    var best = null, bestScore = 0;
-    for (var i = 0; i < contours.size(); i++) {
-      var cnt = contours.get(i);
-      var area = cv.contourArea(cnt);
-      if (area >= minArea) {
-        var perimeter = cv.arcLength(cnt, true);
-        var circularity = perimeter > 0 ? (4 * Math.PI * area) / (perimeter * perimeter) : 0;
-        if (circularity > 0.78 && circularity > bestScore) {
-          bestScore = circularity;
-          best = { area: area, rect: cv.boundingRect(cnt), index: i };
-        }
-      }
-      cnt.delete();
-    }
-    return best;
-  }
-
   function analyzeCurrentPhoto() {
     if (!cvReady || !hasPhoto || !photo.naturalWidth) return;
 
@@ -436,36 +426,30 @@
       var ow = overlay.width, oh = overlay.height;
       var sx = ow / pw, sy = oh / ph;
 
-      var coin = findCoin(contours, minArea);
-      if (!coin) {
+      var widthMm = parseFloat(trayWidth.value);
+      if (!widthMm) {
         countNumber.textContent = '--';
-        countLabel.textContent = 'sem moeda';
+        countLabel.textContent = 'sem largura';
         matchBadge.className = '';
-        showToast('Não encontrei a moeda de referência na foto. Coloque 1 moeda bem visível, sem sobrepor as cápsulas, e tire a foto de novo.', 'err', 4500);
+        showToast('Informe a largura da bandeja (mm) nos controles abaixo antes de contar.', 'err', 4500);
         return;
       }
 
-      var refMm = parseFloat(refDiameter.value) || 27;
-      var pxPerMm2 = coin.area / (Math.PI * (refMm / 2) * (refMm / 2));
+      // A foto inteira (largura pw) corresponde à largura conhecida da bandeja, desde que
+      // ela preencha o quadro de lado a lado — isso dá a escala sem precisar de nenhum objeto extra.
+      var pxPerMm = pw / widthMm;
       var size = CAPSULE_SIZES[capsuleSize.value];
-      var unitArea = capsuleAreaMm2(size) * pxPerMm2;
-
-      octx.lineWidth = 3;
-      octx.strokeStyle = '#eab308';
-      octx.strokeRect(coin.rect.x * sx, coin.rect.y * sy, coin.rect.width * sx, coin.rect.height * sy);
-      octx.font = 'bold 13px sans-serif';
-      octx.fillStyle = '#eab308';
-      octx.fillText('moeda (ref.)', coin.rect.x * sx, Math.max(14, coin.rect.y * sy - 6));
+      var unitArea = capsuleAreaMm2(size) * pxPerMm * pxPerMm;
 
       octx.lineWidth = 2;
       octx.strokeStyle = '#22c55e';
       octx.fillStyle = '#22c55e';
+      octx.font = 'bold 13px sans-serif';
 
       // Blobs maiores que 1 cápsula (encostadas/sobrepostas) valem mais que 1,
-      // estimado pela área esperada de 1 cápsula (calculada a partir da moeda), não sempre 1 por blob.
+      // estimado pela área esperada de 1 cápsula (calculada a partir da largura da bandeja).
       var count = 0;
       for (var i = 0; i < contours.size(); i++) {
-        if (i === coin.index) { continue; }
         var cnt = contours.get(i);
         var area = cv.contourArea(cnt);
         if (area >= minArea) {
