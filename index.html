@@ -66,6 +66,9 @@
   }
   #countNumber { font-size: 42px; font-weight: 700; line-height: 1; }
   #countLabel { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+  #countBadge.unstable { border-color: var(--warn); animation: pulse 1s ease-in-out infinite; }
+  #countBadge.unstable #countLabel { color: var(--warn); }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
   #matchBadge {
     position: absolute;
     top: 12px; right: 12px;
@@ -220,21 +223,38 @@
   var lastProcessTime = 0;
   var PROCESS_INTERVAL_MS = 250;
   var PROC_WIDTH = 480;
+  var countBadge = document.getElementById('countBadge');
+  var countLabel = document.getElementById('countLabel');
+  var countHistory = [];
+  var HISTORY_SIZE = 5;
+  var STABILITY_MIN = 3;
+  var stableCount = null;
 
   advToggle.addEventListener('click', function () {
     advPanel.classList.toggle('open');
     advToggle.textContent = advPanel.classList.contains('open') ? '▴ Ajustes avançados' : '▾ Ajustes avançados';
   });
 
+  function resetStability() {
+    countHistory = [];
+    stableCount = null;
+    if (running && !frozen) {
+      countBadge.classList.add('unstable');
+      countLabel.textContent = 'estabilizando...';
+    }
+  }
+
   btnLight.addEventListener('click', function () {
     invertThreshold = false;
     btnLight.classList.add('active');
     btnDark.classList.remove('active');
+    resetStability();
   });
   btnDark.addEventListener('click', function () {
     invertThreshold = true;
     btnDark.classList.add('active');
     btnLight.classList.remove('active');
+    resetStability();
   });
 
   function onOpenCvReady() {
@@ -275,6 +295,7 @@
       resizeCanvases();
       running = true;
       frozen = false;
+      resetStability();
       btnStart.textContent = 'Desligar câmera';
       btnStart.classList.add('stop');
       btnFreeze.disabled = false;
@@ -296,6 +317,10 @@
     video.srcObject = null;
     octx.clearRect(0, 0, overlay.width, overlay.height);
     countNumber.textContent = '--';
+    countLabel.textContent = 'cápsulas';
+    countBadge.classList.remove('unstable');
+    countHistory = [];
+    stableCount = null;
     matchBadge.className = '';
     btnStart.textContent = 'Ligar câmera';
     btnStart.classList.remove('stop');
@@ -311,8 +336,47 @@
     frozen = !frozen;
     btnFreeze.textContent = frozen ? 'Retomar' : 'Congelar';
     btnFreeze.classList.toggle('frozen', frozen);
-    if (!frozen) requestAnimationFrame(loop);
+    if (!frozen) {
+      resetStability();
+      requestAnimationFrame(loop);
+    }
   });
+
+  [sensitivity, minSize].forEach(function (el) {
+    el.addEventListener('input', resetStability);
+  });
+
+  function modeOf(arr) {
+    var freq = {}, best = arr[0], bestCount = 0;
+    for (var i = 0; i < arr.length; i++) {
+      var v = arr[i];
+      freq[v] = (freq[v] || 0) + 1;
+      if (freq[v] > bestCount) { bestCount = freq[v]; best = v; }
+    }
+    return { value: best, count: bestCount };
+  }
+
+  function registerCount(count) {
+    countHistory.push(count);
+    if (countHistory.length > HISTORY_SIZE) countHistory.shift();
+
+    var m = modeOf(countHistory);
+    if (m.count >= STABILITY_MIN || countHistory.length < STABILITY_MIN) {
+      if (m.count >= STABILITY_MIN) {
+        stableCount = m.value;
+        countBadge.classList.remove('unstable');
+        countLabel.textContent = 'cápsulas';
+      }
+    }
+
+    if (stableCount !== null) {
+      countNumber.textContent = stableCount;
+      updateMatchBadge(stableCount);
+    } else {
+      countNumber.textContent = count;
+      updateMatchBadge(count);
+    }
+  }
 
   function updateMatchBadge(count) {
     var expected = parseInt(expectedInput.value, 10);
@@ -415,8 +479,7 @@
         octx.strokeRect(minX * sx, minY * sy, (maxX - minX) * sx, (maxY - minY) * sy);
       }
 
-      countNumber.textContent = count;
-      updateMatchBadge(count);
+      registerCount(count);
     } finally {
       src.delete(); gray.delete(); blurred.delete(); thresh.delete();
       kernel.delete(); opened.delete(); closed.delete();
