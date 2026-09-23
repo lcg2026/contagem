@@ -13,6 +13,7 @@
     --panel-2: #334155;
     --accent: #22c55e;
     --accent-2: #38bdf8;
+    --coin: #eab308;
     --warn: #f59e0b;
     --danger: #ef4444;
     --text: #f1f5f9;
@@ -43,10 +44,6 @@
     min-height: 0;
     background: #000;
     overflow: hidden;
-    touch-action: manipulation;
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    user-select: none;
   }
   #photo, #overlay {
     position: absolute;
@@ -123,29 +120,6 @@
   #toast.ok { border-color: var(--accent); }
   #toast.err { border-color: var(--danger); }
 
-  #nameModal {
-    position: absolute; inset: 0; z-index: 25;
-    background: rgba(15,23,42,0.92);
-    display: none;
-    align-items: center; justify-content: center;
-    padding: 20px;
-  }
-  #nameModal.show { display: flex; }
-  #nameModal .box {
-    background: var(--panel); border-radius: 14px; padding: 18px;
-    width: 100%; max-width: 320px; display: flex; flex-direction: column; gap: 12px;
-  }
-  #nameModal input {
-    background: var(--panel-2); border: none; color: var(--text);
-    border-radius: 8px; padding: 10px; font-size: 14px;
-  }
-  #nameModal .box-buttons { display: flex; gap: 8px; }
-  #nameModal .box-buttons button {
-    flex: 1; padding: 10px; border-radius: 8px; border: none; font-size: 14px; cursor: pointer;
-  }
-  #nameModal .btn-confirm { background: var(--accent); color: #052e16; font-weight: 600; }
-  #nameModal .btn-cancel { background: var(--panel-2); color: var(--text); }
-
   #controls {
     flex: none;
     background: var(--panel);
@@ -156,7 +130,7 @@
     gap: 10px;
   }
   .row { display: flex; align-items: center; gap: 10px; }
-  .row label { font-size: 12px; color: var(--text-dim); width: 100px; flex: none; }
+  .row label { font-size: 12px; color: var(--text-dim); width: 110px; flex: none; }
   .row input[type=range] { flex: 1; accent-color: var(--accent-2); }
   .row input[type=number] {
     width: 70px; background: var(--panel-2); border: none; color: var(--text);
@@ -166,13 +140,6 @@
     flex: 1; background: var(--panel-2); border: none; color: var(--text);
     border-radius: 8px; padding: 8px; font-size: 13px;
   }
-  #calibStatus { flex: 1; font-size: 12px; color: var(--text-dim); }
-  #btnCalibrate, #btnSavePreset {
-    padding: 8px 14px; border-radius: 8px; border: none;
-    background: var(--panel-2); color: var(--text); font-size: 12px; cursor: pointer; flex: none;
-  }
-  #btnCalibrate.set { background: var(--accent-2); color: #082f49; }
-  #btnSavePreset:disabled { opacity: 0.4; }
   .switch-row { display: flex; gap: 8px; }
   .switch-row button {
     flex: 1; padding: 8px; border-radius: 10px; border: 1px solid var(--panel-2);
@@ -215,7 +182,7 @@
 
   <div id="stage">
     <div id="loading"><div class="spinner"></div><div>Carregando motor de visão...</div></div>
-    <div id="placeholder">Toque em "Tirar foto" para fotografar a bandeja</div>
+    <div id="placeholder">Espalhe as cápsulas, coloque 1 moeda de referência junto, e toque em "Tirar foto"</div>
     <img id="photo" alt="">
     <canvas id="overlay"></canvas>
     <div id="countBadge">
@@ -223,18 +190,8 @@
       <div id="countLabel">cápsulas</div>
     </div>
     <div id="matchBadge"></div>
-    <div id="hint">Espalhe as cápsulas na bandeja sem encostar umas nas outras, sobre fundo liso e contrastante.</div>
+    <div id="hint">Espalhe as cápsulas sem encostar, e coloque 1 moeda de referência (sem sobrepor) sobre fundo liso e contrastante.</div>
     <div id="toast"></div>
-    <div id="nameModal">
-      <div class="box">
-        <label style="font-size:13px;color:var(--text-dim);">Nome da predefinição</label>
-        <input type="text" id="nameInput" placeholder='ex: "Cápsula 0 - Vitamina D"'>
-        <div class="box-buttons">
-          <button class="btn-cancel" id="nameCancel">Cancelar</button>
-          <button class="btn-confirm" id="nameConfirm">Salvar</button>
-        </div>
-      </div>
-    </div>
   </div>
 
   <div id="controls">
@@ -244,19 +201,26 @@
     </div>
 
     <div class="row">
-      <label>Predefinição</label>
-      <select id="presetSelect"><option value="">— nenhuma —</option></select>
+      <label>Tam. da cápsula</label>
+      <select id="capsuleSize">
+        <option value="000">000 (26,1 × 9,9 mm)</option>
+        <option value="00">00 (23,3 × 8,5 mm)</option>
+        <option value="0" selected>0 (21,7 × 7,6 mm)</option>
+        <option value="1">1 (19,4 × 6,9 mm)</option>
+        <option value="2">2 (18,0 × 6,4 mm)</option>
+        <option value="3">3 (15,9 × 5,8 mm)</option>
+        <option value="4">4 (14,3 × 5,3 mm)</option>
+        <option value="5">5 (11,1 × 4,9 mm)</option>
+      </select>
     </div>
 
     <div class="row">
-      <label>Tam. da cápsula</label>
-      <span id="calibStatus">Não calibrado</span>
-      <button id="btnCalibrate">Calibrar</button>
+      <label>Moeda ref. (mm)</label>
+      <input type="number" id="refDiameter" value="27" min="10" max="40" step="0.5">
     </div>
 
     <div id="mainButtons">
       <button id="btnCapture">Tirar foto</button>
-      <button id="btnSavePreset" disabled>Salvar predefinição</button>
     </div>
     <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none">
 
@@ -287,36 +251,45 @@
   var octx = overlay.getContext('2d');
   var loading = document.getElementById('loading');
   var btnCapture = document.getElementById('btnCapture');
-  var btnSavePreset = document.getElementById('btnSavePreset');
   var photoInput = document.getElementById('photoInput');
   var countNumber = document.getElementById('countNumber');
   var countLabel = document.getElementById('countLabel');
   var matchBadge = document.getElementById('matchBadge');
   var expectedInput = document.getElementById('expected');
+  var capsuleSize = document.getElementById('capsuleSize');
+  var refDiameter = document.getElementById('refDiameter');
   var sensitivity = document.getElementById('sensitivity');
   var minSize = document.getElementById('minSize');
   var btnLight = document.getElementById('btnLight');
   var btnDark = document.getElementById('btnDark');
   var advToggle = document.getElementById('advToggle');
   var advPanel = document.getElementById('advPanel');
-  var btnCalibrate = document.getElementById('btnCalibrate');
-  var calibStatus = document.getElementById('calibStatus');
-  var presetSelect = document.getElementById('presetSelect');
   var toast = document.getElementById('toast');
-  var nameModal = document.getElementById('nameModal');
-  var nameInput = document.getElementById('nameInput');
-  var nameCancel = document.getElementById('nameCancel');
-  var nameConfirm = document.getElementById('nameConfirm');
 
   var cvReady = false;
-  var unitArea = null;
   var invertThreshold = false;
   var hasPhoto = false;
-  var captureMode = 'count';
   var processCanvas = document.createElement('canvas');
   var pctx = processCanvas.getContext('2d', { willReadFrequently: true });
   var PROC_WIDTH = 480;
   var toastTimer = null;
+
+  // Dimensões externas padrão (mm) das cápsulas de gelatina, por tamanho.
+  var CAPSULE_SIZES = {
+    '000': { length: 26.14, diameter: 9.97 },
+    '00':  { length: 23.30, diameter: 8.53 },
+    '0':   { length: 21.70, diameter: 7.65 },
+    '1':   { length: 19.40, diameter: 6.91 },
+    '2':   { length: 18.00, diameter: 6.35 },
+    '3':   { length: 15.90, diameter: 5.82 },
+    '4':   { length: 14.30, diameter: 5.31 },
+    '5':   { length: 11.10, diameter: 4.91 }
+  };
+  // Área de um "estádio" (retângulo + 2 semicírculos) = a forma de uma cápsula vista de cima.
+  function capsuleAreaMm2(size) {
+    var L = size.length, D = size.diameter;
+    return D * (L - D) + Math.PI * (D / 2) * (D / 2);
+  }
 
   // Substitui alert()/prompt(): em apps adicionados à tela de início do iPhone (modo standalone),
   // diálogos nativos do navegador podem não funcionar — esses avisos ficam dentro da própria página.
@@ -327,25 +300,6 @@
     if (durationMs !== 0) {
       toastTimer = setTimeout(function () { toast.classList.remove('show'); }, durationMs || 2600);
     }
-  }
-
-  function askName(callback) {
-    nameInput.value = '';
-    nameModal.classList.add('show');
-    nameInput.focus();
-    function cleanup() {
-      nameModal.classList.remove('show');
-      nameConfirm.removeEventListener('click', onConfirm);
-      nameCancel.removeEventListener('click', onCancel);
-    }
-    function onConfirm() {
-      var v = nameInput.value.trim();
-      cleanup();
-      if (v) callback(v);
-    }
-    function onCancel() { cleanup(); }
-    nameConfirm.addEventListener('click', onConfirm);
-    nameCancel.addEventListener('click', onCancel);
   }
 
   advToggle.addEventListener('click', function () {
@@ -365,8 +319,9 @@
     btnLight.classList.remove('active');
     analyzeCurrentPhoto();
   });
-  [sensitivity, minSize].forEach(function (el) {
+  [sensitivity, minSize, capsuleSize, refDiameter].forEach(function (el) {
     el.addEventListener('input', analyzeCurrentPhoto);
+    el.addEventListener('change', analyzeCurrentPhoto);
   });
 
   function computeMask(src, gray, blurred, thresh, kernel, opened, closed) {
@@ -380,126 +335,9 @@
     cv.morphologyEx(opened, closed, cv.MORPH_CLOSE, kernel);
   }
 
-  // --- Predefinições (banco local de calibrações por cápsula/lote) ---
-  function loadPresets() {
-    try {
-      var v = localStorage.getItem('capsulePresets');
-      return v ? JSON.parse(v) : {};
-    } catch (e) { return {}; }
-  }
-
-  function savePresets(presets) {
-    try { localStorage.setItem('capsulePresets', JSON.stringify(presets)); } catch (e) {}
-  }
-
-  function refreshPresetSelect(selectName) {
-    var presets = loadPresets();
-    presetSelect.innerHTML = '<option value="">— nenhuma —</option>';
-    Object.keys(presets).sort().forEach(function (name) {
-      var opt = document.createElement('option');
-      opt.value = name;
-      opt.textContent = name + ' (' + Math.round(presets[name]) + ' px²)';
-      presetSelect.appendChild(opt);
-    });
-    if (selectName) presetSelect.value = selectName;
-  }
-
-  presetSelect.addEventListener('change', function () {
-    var presets = loadPresets();
-    var name = presetSelect.value;
-    if (!name || !presets[name]) return;
-    unitArea = presets[name];
-    updateCalibLabel();
-    analyzeCurrentPhoto();
-  });
-
-  btnSavePreset.addEventListener('click', function () {
-    if (!unitArea) { showToast('Calibre primeiro tocando numa cápsula.', 'err'); return; }
-    askName(function (name) {
-      var presets = loadPresets();
-      presets[name] = unitArea;
-      savePresets(presets);
-      refreshPresetSelect(name);
-      showToast('Predefinição "' + name + '" salva.', 'ok');
-    });
-  });
-
-  // --- Calibração: foto separada de 1 cápsula sozinha (sem precisar tocar em nada) ---
-  function updateCalibLabel() {
-    if (unitArea) {
-      calibStatus.textContent = 'Calibrado (' + Math.round(unitArea) + ' px²)';
-      btnCalibrate.classList.add('set');
-      btnCalibrate.textContent = 'Recalibrar';
-      btnSavePreset.disabled = false;
-    } else {
-      calibStatus.textContent = 'Não calibrado';
-      btnCalibrate.classList.remove('set');
-      btnCalibrate.textContent = 'Calibrar';
-      btnSavePreset.disabled = true;
-    }
-  }
-
-  // Mostra a foto de calibração com um quadro AZUL ao redor do que foi medido,
-  // assim o operador confere visualmente se pegou só a cápsula (e não sombra/dedo/mais de uma).
-  function processCalibrationPhoto() {
-    var pw = PROC_WIDTH;
-    var ph = Math.round(photo.naturalHeight * (PROC_WIDTH / photo.naturalWidth));
-    processCanvas.width = pw;
-    processCanvas.height = ph;
-    pctx.drawImage(photo, 0, 0, pw, ph);
-
-    var src = cv.imread(processCanvas);
-    var gray = new cv.Mat(), blurred = new cv.Mat(), thresh = new cv.Mat();
-    var kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3, 3));
-    var opened = new cv.Mat(), closed = new cv.Mat();
-    var contours = new cv.MatVector(), hierarchy = new cv.Mat();
-    try {
-      computeMask(src, gray, blurred, thresh, kernel, opened, closed);
-      cv.findContours(closed, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-      var best = 0, bestRect = null;
-      for (var i = 0; i < contours.size(); i++) {
-        var cnt = contours.get(i);
-        var a = cv.contourArea(cnt);
-        if (a > best) { best = a; bestRect = cv.boundingRect(cnt); }
-        cnt.delete();
-      }
-
-      octx.clearRect(0, 0, overlay.width, overlay.height);
-      if (best < 50) {
-        showToast('Não encontrei nenhuma cápsula nessa foto. Tire de novo com 1 cápsula bem visível e sozinha na bandeja.', 'err');
-        return;
-      }
-
-      var sx = overlay.width / pw, sy = overlay.height / ph;
-      octx.lineWidth = 3;
-      octx.strokeStyle = '#38bdf8';
-      octx.strokeRect(bestRect.x * sx, bestRect.y * sy, bestRect.width * sx, bestRect.height * sy);
-      octx.font = 'bold 14px sans-serif';
-      octx.fillStyle = '#38bdf8';
-      octx.fillText('1 cápsula = ' + Math.round(best) + ' px²', bestRect.x * sx, Math.max(16, bestRect.y * sy - 6));
-
-      unitArea = best;
-      updateCalibLabel();
-      showToast('Confira o quadro azul: precisa cobrir só a cápsula, sem sombra ou outro objeto. Se estiver certo, toque em "Tirar foto" pra contar a bandeja.', 'ok', 5000);
-    } finally {
-      src.delete(); gray.delete(); blurred.delete(); thresh.delete();
-      kernel.delete(); opened.delete(); closed.delete();
-      contours.delete(); hierarchy.delete();
-    }
-  }
-
-  btnCalibrate.addEventListener('click', function () {
-    if (!cvReady) { showToast('Aguarde o motor de visão carregar.', 'err'); return; }
-    showToast('Coloque 1 cápsula sozinha na bandeja e tire a foto (na mesma distância que vai usar pra contar).', null, 3500);
-    captureMode = 'calibrate';
-    photoInput.value = '';
-    photoInput.click();
-  });
-
   // --- Captura de foto (câmera nativa do celular, sem vídeo ao vivo) ---
   btnCapture.addEventListener('click', function () {
     if (!cvReady) { showToast('Aguarde o motor de visão carregar.', 'err'); return; }
-    captureMode = 'count';
     photoInput.value = '';
     photoInput.click();
   });
@@ -508,23 +346,13 @@
     var file = photoInput.files && photoInput.files[0];
     if (!file) return;
     var url = URL.createObjectURL(file);
-    var mode = captureMode;
-
     photo.onload = function () {
       URL.revokeObjectURL(url);
       hasPhoto = true;
       placeholder.classList.add('hidden');
       photo.style.display = 'block';
       resizeCanvases();
-      if (mode === 'calibrate') {
-        countNumber.textContent = '--';
-        countLabel.textContent = 'calibração';
-        matchBadge.className = '';
-        processCalibrationPhoto();
-      } else {
-        countLabel.textContent = 'cápsulas';
-        analyzeCurrentPhoto();
-      }
+      analyzeCurrentPhoto();
     };
     photo.src = url;
   });
@@ -559,6 +387,26 @@
     if (hasPhoto) updateMatchBadge(parseInt(countNumber.textContent, 10) || 0);
   });
 
+  // Acha o blob mais "redondo" (circularidade = 4·π·área / perímetro², perto de 1.0)
+  // entre os candidatos — é a moeda, já que cápsulas são alongadas (círculo baixo).
+  function findCoin(contours, minArea) {
+    var best = null, bestScore = 0;
+    for (var i = 0; i < contours.size(); i++) {
+      var cnt = contours.get(i);
+      var area = cv.contourArea(cnt);
+      if (area >= minArea) {
+        var perimeter = cv.arcLength(cnt, true);
+        var circularity = perimeter > 0 ? (4 * Math.PI * area) / (perimeter * perimeter) : 0;
+        if (circularity > 0.78 && circularity > bestScore) {
+          bestScore = circularity;
+          best = { area: area, rect: cv.boundingRect(cnt), index: i };
+        }
+      }
+      cnt.delete();
+    }
+    return best;
+  }
+
   function analyzeCurrentPhoto() {
     if (!cvReady || !hasPhoto || !photo.naturalWidth) return;
 
@@ -587,19 +435,41 @@
       octx.clearRect(0, 0, overlay.width, overlay.height);
       var ow = overlay.width, oh = overlay.height;
       var sx = ow / pw, sy = oh / ph;
+
+      var coin = findCoin(contours, minArea);
+      if (!coin) {
+        countNumber.textContent = '--';
+        countLabel.textContent = 'sem moeda';
+        matchBadge.className = '';
+        showToast('Não encontrei a moeda de referência na foto. Coloque 1 moeda bem visível, sem sobrepor as cápsulas, e tire a foto de novo.', 'err', 4500);
+        return;
+      }
+
+      var refMm = parseFloat(refDiameter.value) || 27;
+      var pxPerMm2 = coin.area / (Math.PI * (refMm / 2) * (refMm / 2));
+      var size = CAPSULE_SIZES[capsuleSize.value];
+      var unitArea = capsuleAreaMm2(size) * pxPerMm2;
+
+      octx.lineWidth = 3;
+      octx.strokeStyle = '#eab308';
+      octx.strokeRect(coin.rect.x * sx, coin.rect.y * sy, coin.rect.width * sx, coin.rect.height * sy);
+      octx.font = 'bold 13px sans-serif';
+      octx.fillStyle = '#eab308';
+      octx.fillText('moeda (ref.)', coin.rect.x * sx, Math.max(14, coin.rect.y * sy - 6));
+
       octx.lineWidth = 2;
       octx.strokeStyle = '#22c55e';
-      octx.font = 'bold 13px sans-serif';
       octx.fillStyle = '#22c55e';
 
       // Blobs maiores que 1 cápsula (encostadas/sobrepostas) valem mais que 1,
-      // estimado pela área calibrada de 1 cápsula, em vez de sempre contar 1 por blob.
+      // estimado pela área esperada de 1 cápsula (calculada a partir da moeda), não sempre 1 por blob.
       var count = 0;
       for (var i = 0; i < contours.size(); i++) {
+        if (i === coin.index) { continue; }
         var cnt = contours.get(i);
         var area = cv.contourArea(cnt);
         if (area >= minArea) {
-          var sub = unitArea ? Math.max(1, Math.round(area / unitArea)) : 1;
+          var sub = Math.max(1, Math.round(area / unitArea));
           count += sub;
           var rect = cv.boundingRect(cnt);
           octx.strokeRect(rect.x * sx, rect.y * sy, rect.width * sx, rect.height * sy);
@@ -608,6 +478,7 @@
         cnt.delete();
       }
 
+      countLabel.textContent = 'cápsulas';
       countNumber.textContent = count;
       updateMatchBadge(count);
     } finally {
@@ -631,9 +502,6 @@
       }
     }, 100);
   }
-
-  refreshPresetSelect();
-  updateCalibLabel();
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function () {
