@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Contador de Cápsulas</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f172a">
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --panel-2: #334155;
+    --accent: #22c55e;
+    --accent-2: #38bdf8;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+    --text: #f1f5f9;
+    --text-dim: #94a3b8;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    overscroll-behavior: none;
+  }
+  #app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+
+  header {
+    padding: 10px 14px;
+    text-align: center;
+    font-weight: 600;
+    font-size: 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--panel-2);
+    flex: none;
+  }
+
+  #stage {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    background: #000;
+    overflow: hidden;
+  }
+  #video, #overlay {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    max-width: 100%; max-height: 100%;
+  }
+  #video { object-fit: contain; }
+  #overlay { pointer-events: none; }
+
+  #countBadge {
+    position: absolute;
+    top: 12px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(15, 23, 42, 0.85);
+    border: 2px solid var(--accent);
+    border-radius: 16px;
+    padding: 6px 22px;
+    text-align: center;
+    min-width: 120px;
+  }
+  #countNumber { font-size: 42px; font-weight: 700; line-height: 1; }
+  #countLabel { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+  #matchBadge {
+    position: absolute;
+    top: 12px; right: 12px;
+    padding: 6px 12px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    display: none;
+  }
+  #matchBadge.ok { display: block; background: rgba(34,197,94,0.9); color: #052e16; }
+  #matchBadge.bad { display: block; background: rgba(239,68,68,0.9); color: #450a0a; }
+
+  #hint {
+    position: absolute;
+    bottom: 10px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(15,23,42,0.85);
+    padding: 8px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    color: var(--text-dim);
+    text-align: center;
+    max-width: 90%;
+  }
+
+  #controls {
+    flex: none;
+    background: var(--panel);
+    border-top: 1px solid var(--panel-2);
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .row { display: flex; align-items: center; gap: 10px; }
+  .row label { font-size: 12px; color: var(--text-dim); width: 120px; flex: none; }
+  .row input[type=range] { flex: 1; accent-color: var(--accent-2); }
+  .row input[type=number] {
+    width: 70px; background: var(--panel-2); border: none; color: var(--text);
+    border-radius: 8px; padding: 6px 8px; font-size: 14px;
+  }
+  .switch-row { display: flex; gap: 8px; }
+  .switch-row button {
+    flex: 1; padding: 8px; border-radius: 10px; border: 1px solid var(--panel-2);
+    background: var(--panel-2); color: var(--text-dim); font-size: 12px; cursor: pointer;
+  }
+  .switch-row button.active { background: var(--accent-2); color: #082f49; border-color: var(--accent-2); font-weight: 600; }
+
+  #mainButtons { display: flex; gap: 10px; }
+  #mainButtons button {
+    flex: 1; padding: 14px; border-radius: 12px; border: none;
+    font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  #btnStart { background: var(--accent); color: #052e16; }
+  #btnStart.stop { background: var(--danger); color: #450a0a; }
+  #btnFreeze { background: var(--panel-2); color: var(--text); }
+  #btnFreeze.frozen { background: var(--accent-2); color: #082f49; }
+
+  #advToggle {
+    text-align: center; font-size: 12px; color: var(--text-dim);
+    cursor: pointer; padding: 2px;
+  }
+  #advPanel { display: none; flex-direction: column; gap: 10px; }
+  #advPanel.open { display: flex; }
+
+  #loading {
+    position: absolute; inset: 0; background: rgba(15,23,42,0.95);
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 10px; font-size: 14px; color: var(--text-dim);
+    z-index: 10;
+  }
+  #loading.hidden { display: none; }
+  .spinner {
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 3px solid var(--panel-2); border-top-color: var(--accent-2);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>Contador de Cápsulas</header>
+
+  <div id="stage">
+    <div id="loading"><div class="spinner"></div><div>Carregando motor de visão...</div></div>
+    <video id="video" playsinline muted></video>
+    <canvas id="overlay"></canvas>
+    <div id="countBadge">
+      <div id="countNumber">--</div>
+      <div id="countLabel">cápsulas</div>
+    </div>
+    <div id="matchBadge"></div>
+    <div id="hint">Espalhe as cápsulas na bandeja sem encostar umas nas outras, sobre fundo liso e contrastante.</div>
+  </div>
+
+  <div id="controls">
+    <div class="row">
+      <label>Qtd. esperada</label>
+      <input type="number" id="expected" placeholder="opcional" min="0" inputmode="numeric">
+    </div>
+
+    <div id="mainButtons">
+      <button id="btnStart">Ligar câmera</button>
+      <button id="btnFreeze" disabled>Congelar</button>
+    </div>
+
+    <div id="advToggle">▾ Ajustes avançados</div>
+    <div id="advPanel">
+      <div class="switch-row">
+        <button id="btnLight" class="active">Cápsulas mais claras</button>
+        <button id="btnDark">Cápsulas mais escuras</button>
+      </div>
+      <div class="row">
+        <label>Sensibilidade</label>
+        <input type="range" id="sensitivity" min="-40" max="40" value="0" step="1">
+      </div>
+      <div class="row">
+        <label>Tamanho mínimo</label>
+        <input type="range" id="minSize" min="50" max="2000" value="250" step="10">
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="opencv.js"></script>
+<script>
+(function () {
+  var video = document.getElementById('video');
+  var overlay = document.getElementById('overlay');
+  var octx = overlay.getContext('2d');
+  var loading = document.getElementById('loading');
+  var btnStart = document.getElementById('btnStart');
+  var btnFreeze = document.getElementById('btnFreeze');
+  var countNumber = document.getElementById('countNumber');
+  var matchBadge = document.getElementById('matchBadge');
+  var expectedInput = document.getElementById('expected');
+  var sensitivity = document.getElementById('sensitivity');
+  var minSize = document.getElementById('minSize');
+  var btnLight = document.getElementById('btnLight');
+  var btnDark = document.getElementById('btnDark');
+  var advToggle = document.getElementById('advToggle');
+  var advPanel = document.getElementById('advPanel');
+
+  var stream = null;
+  var running = false;
+  var frozen = false;
+  var cvReady = false;
+  var invertThreshold = false;
+  var processCanvas = document.createElement('canvas');
+  var pctx = processCanvas.getContext('2d', { willReadFrequently: true });
+  var lastProcessTime = 0;
+  var PROCESS_INTERVAL_MS = 250;
+  var PROC_WIDTH = 480;
+
+  advToggle.addEventListener('click', function () {
+    advPanel.classList.toggle('open');
+    advToggle.textContent = advPanel.classList.contains('open') ? '▴ Ajustes avançados' : '▾ Ajustes avançados';
+  });
+
+  btnLight.addEventListener('click', function () {
+    invertThreshold = false;
+    btnLight.classList.add('active');
+    btnDark.classList.remove('active');
+  });
+  btnDark.addEventListener('click', function () {
+    invertThreshold = true;
+    btnDark.classList.add('active');
+    btnLight.classList.remove('active');
+  });
+
+  function onOpenCvReady() {
+    cvReady = true;
+    loading.classList.add('hidden');
+  }
+  if (typeof cv !== 'undefined' && cv.onRuntimeInitialized !== undefined) {
+    cv.onRuntimeInitialized = onOpenCvReady;
+  } else {
+    var waitCv = setInterval(function () {
+      if (typeof cv !== 'undefined') {
+        cv.onRuntimeInitialized = onOpenCvReady;
+        clearInterval(waitCv);
+      }
+    }, 100);
+  }
+
+  function resizeCanvases() {
+    var w = video.videoWidth, h = video.videoHeight;
+    if (!w || !h) return;
+    var rect = video.getBoundingClientRect();
+    overlay.width = w;
+    overlay.height = h;
+    overlay.style.width = rect.width + 'px';
+    overlay.style.height = rect.height + 'px';
+  }
+
+  window.addEventListener('resize', resizeCanvases);
+
+  async function startCamera() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      });
+      video.srcObject = stream;
+      await video.play();
+      resizeCanvases();
+      running = true;
+      frozen = false;
+      btnStart.textContent = 'Desligar câmera';
+      btnStart.classList.add('stop');
+      btnFreeze.disabled = false;
+      btnFreeze.textContent = 'Congelar';
+      btnFreeze.classList.remove('frozen');
+      requestAnimationFrame(loop);
+    } catch (err) {
+      alert('Não foi possível acessar a câmera: ' + err.message);
+    }
+  }
+
+  function stopCamera() {
+    running = false;
+    frozen = false;
+    if (stream) {
+      stream.getTracks().forEach(function (t) { t.stop(); });
+      stream = null;
+    }
+    video.srcObject = null;
+    octx.clearRect(0, 0, overlay.width, overlay.height);
+    countNumber.textContent = '--';
+    matchBadge.className = '';
+    btnStart.textContent = 'Ligar câmera';
+    btnStart.classList.remove('stop');
+    btnFreeze.disabled = true;
+    btnFreeze.classList.remove('frozen');
+  }
+
+  btnStart.addEventListener('click', function () {
+    if (running) stopCamera(); else startCamera();
+  });
+
+  btnFreeze.addEventListener('click', function () {
+    frozen = !frozen;
+    btnFreeze.textContent = frozen ? 'Retomar' : 'Congelar';
+    btnFreeze.classList.toggle('frozen', frozen);
+    if (!frozen) requestAnimationFrame(loop);
+  });
+
+  function updateMatchBadge(count) {
+    var expected = parseInt(expectedInput.value, 10);
+    if (!expected || isNaN(expected)) {
+      matchBadge.className = '';
+      matchBadge.textContent = '';
+      return;
+    }
+    if (count === expected) {
+      matchBadge.className = 'ok';
+      matchBadge.textContent = 'Confere (' + expected + ')';
+    } else {
+      matchBadge.className = 'bad';
+      matchBadge.textContent = (count > expected ? '+' : '') + (count - expected) + ' de ' + expected;
+    }
+  }
+
+  function processFrame() {
+    if (!video.videoWidth) return;
+    var scale = PROC_WIDTH / video.videoWidth;
+    var pw = PROC_WIDTH;
+    var ph = Math.round(video.videoHeight * scale);
+    processCanvas.width = pw;
+    processCanvas.height = ph;
+    pctx.drawImage(video, 0, 0, pw, ph);
+
+    var src = cv.imread(processCanvas);
+    var gray = new cv.Mat();
+    var blurred = new cv.Mat();
+    var thresh = new cv.Mat();
+    var kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3, 3));
+    var opened = new cv.Mat();
+    var closed = new cv.Mat();
+    var contours = new cv.MatVector();
+    var hierarchy = new cv.Mat();
+
+    try {
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
+
+      var otsu = cv.threshold(blurred, thresh, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+      var offset = parseInt(sensitivity.value, 10);
+      var mode = invertThreshold ? cv.THRESH_BINARY_INV : cv.THRESH_BINARY;
+      cv.threshold(blurred, thresh, otsu - offset, 255, mode);
+
+      cv.morphologyEx(thresh, opened, cv.MORPH_OPEN, kernel);
+      cv.morphologyEx(opened, closed, cv.MORPH_CLOSE, kernel);
+
+      cv.findContours(closed, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+      var minArea = parseInt(minSize.value, 10);
+      var count = 0;
+      octx.clearRect(0, 0, overlay.width, overlay.height);
+      var ow = overlay.width, oh = overlay.height;
+      var sx = ow / pw, sy = oh / ph;
+      octx.lineWidth = 2;
+      octx.strokeStyle = '#22c55e';
+      octx.font = '13px sans-serif';
+      octx.fillStyle = '#22c55e';
+
+      for (var i = 0; i < contours.size(); i++) {
+        var cnt = contours.get(i);
+        var area = cv.contourArea(cnt);
+        if (area >= minArea) {
+          count++;
+          var rect = cv.boundingRect(cnt);
+          octx.strokeRect(rect.x * sx, rect.y * sy, rect.width * sx, rect.height * sy);
+        }
+        cnt.delete();
+      }
+
+      countNumber.textContent = count;
+      updateMatchBadge(count);
+    } finally {
+      src.delete(); gray.delete(); blurred.delete(); thresh.delete();
+      kernel.delete(); opened.delete(); closed.delete();
+      contours.delete(); hierarchy.delete();
+    }
+  }
+
+  function loop(ts) {
+    if (!running || frozen) return;
+    if (!cvReady) { requestAnimationFrame(loop); return; }
+    if (ts - lastProcessTime >= PROCESS_INTERVAL_MS) {
+      lastProcessTime = ts;
+      try { processFrame(); } catch (e) { console.error(e); }
+    }
+    requestAnimationFrame(loop);
+  }
+
+  video.addEventListener('loadedmetadata', resizeCanvases);
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function () {});
+    });
+  }
+})();
+</script>
+</body>
+</html>
