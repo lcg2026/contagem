@@ -93,6 +93,11 @@
     text-align: center;
     max-width: 90%;
   }
+  #stage.calibrating { cursor: crosshair; }
+  #stage.calibrating #hint {
+    color: #082f49; background: var(--accent-2); font-weight: 600;
+    animation: pulse 1s ease-in-out infinite;
+  }
 
   #controls {
     flex: none;
@@ -226,12 +231,16 @@
   var advPanel = document.getElementById('advPanel');
   var btnCalibrate = document.getElementById('btnCalibrate');
   var calibStatus = document.getElementById('calibStatus');
+  var stage = document.getElementById('stage');
+  var hint = document.getElementById('hint');
+  var defaultHint = hint.textContent;
 
   var stream = null;
   var running = false;
   var frozen = false;
   var cvReady = false;
   var unitArea = null;
+  var calibrating = false;
   var invertThreshold = false;
   var processCanvas = document.createElement('canvas');
   var pctx = processCanvas.getContext('2d', { willReadFrequently: true });
@@ -303,12 +312,32 @@
     updateCalibLabel();
   }
 
-  function calibrate() {
+  function startCalibrating() {
     if (!cvReady) { alert('Aguarde o motor de visão carregar.'); return; }
-    if (!video.videoWidth) { alert('Ligue a câmera, coloque 1 cápsula sozinha na bandeja e tente de novo.'); return; }
+    if (!running || !video.videoWidth) { alert('Ligue a câmera e enquadre a bandeja (do mesmo jeito que vai usar pra contar) antes de calibrar.'); return; }
+    calibrating = true;
+    stage.classList.add('calibrating');
+    hint.textContent = 'Toque numa cápsula isolada, de tamanho típico, perto do centro da tela';
+  }
+
+  function stopCalibrating() {
+    calibrating = false;
+    stage.classList.remove('calibrating');
+    hint.textContent = defaultHint;
+  }
+
+  // Calibra tocando numa cápsula dentro do MESMO enquadramento usado pra contar —
+  // assim a escala (distância da câmera) é sempre igual entre calibração e contagem.
+  function calibrateAtPoint(clientX, clientY) {
+    var rect = video.getBoundingClientRect();
+    var xFrac = (clientX - rect.left) / rect.width;
+    var yFrac = (clientY - rect.top) / rect.height;
+    if (xFrac < 0 || xFrac > 1 || yFrac < 0 || yFrac > 1) return;
 
     var vscale = PROC_WIDTH / video.videoWidth;
     var pw = PROC_WIDTH, ph = Math.round(video.videoHeight * vscale);
+    var tapX = xFrac * pw, tapY = yFrac * ph;
+
     var calibCanvas = document.createElement('canvas');
     calibCanvas.width = pw; calibCanvas.height = ph;
     calibCanvas.getContext('2d').drawImage(video, 0, 0, pw, ph);
@@ -321,19 +350,21 @@
     try {
       computeMask(src, gray, blurred, thresh, kernel, opened, closed);
       cv.findContours(closed, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-      var best = 0;
+      var found = 0;
       for (var i = 0; i < contours.size(); i++) {
         var cnt = contours.get(i);
-        var area = cv.contourArea(cnt);
-        if (area > best) best = area;
+        var r = cv.boundingRect(cnt);
+        if (tapX >= r.x && tapX <= r.x + r.width && tapY >= r.y && tapY <= r.y + r.height) {
+          found = cv.contourArea(cnt);
+        }
         cnt.delete();
       }
-      if (best < 50) {
-        alert('Não encontrei uma cápsula na imagem. Coloque só 1 cápsula, sozinha, bem visível na bandeja e tente de novo.');
+      if (found < 50) {
+        alert('Não encontrei uma cápsula bem nesse ponto. Toque com mais precisão no centro de uma cápsula isolada.');
         return;
       }
-      unitArea = best;
-      try { localStorage.setItem('capsuleUnitArea', String(best)); } catch (e) {}
+      unitArea = found;
+      try { localStorage.setItem('capsuleUnitArea', String(found)); } catch (e) {}
       updateCalibLabel();
       resetStability();
     } finally {
@@ -343,7 +374,12 @@
     }
   }
 
-  btnCalibrate.addEventListener('click', calibrate);
+  btnCalibrate.addEventListener('click', startCalibrating);
+  stage.addEventListener('click', function (e) {
+    if (!calibrating) return;
+    calibrateAtPoint(e.clientX, e.clientY);
+    stopCalibrating();
+  });
   loadCalibration();
 
   function onOpenCvReady() {
@@ -399,6 +435,7 @@
   function stopCamera() {
     running = false;
     frozen = false;
+    if (calibrating) stopCalibrating();
     if (stream) {
       stream.getTracks().forEach(function (t) { t.stop(); });
       stream = null;
