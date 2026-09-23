@@ -290,6 +290,7 @@
   var btnSavePreset = document.getElementById('btnSavePreset');
   var photoInput = document.getElementById('photoInput');
   var countNumber = document.getElementById('countNumber');
+  var countLabel = document.getElementById('countLabel');
   var matchBadge = document.getElementById('matchBadge');
   var expectedInput = document.getElementById('expected');
   var sensitivity = document.getElementById('sensitivity');
@@ -438,14 +439,16 @@
     }
   }
 
-  function processCalibrationPhoto(imgEl) {
-    var vscale = PROC_WIDTH / imgEl.naturalWidth;
-    var pw = PROC_WIDTH, ph = Math.round(imgEl.naturalHeight * vscale);
-    var cCanvas = document.createElement('canvas');
-    cCanvas.width = pw; cCanvas.height = ph;
-    cCanvas.getContext('2d').drawImage(imgEl, 0, 0, pw, ph);
+  // Mostra a foto de calibração com um quadro AZUL ao redor do que foi medido,
+  // assim o operador confere visualmente se pegou só a cápsula (e não sombra/dedo/mais de uma).
+  function processCalibrationPhoto() {
+    var pw = PROC_WIDTH;
+    var ph = Math.round(photo.naturalHeight * (PROC_WIDTH / photo.naturalWidth));
+    processCanvas.width = pw;
+    processCanvas.height = ph;
+    pctx.drawImage(photo, 0, 0, pw, ph);
 
-    var src = cv.imread(cCanvas);
+    var src = cv.imread(processCanvas);
     var gray = new cv.Mat(), blurred = new cv.Mat(), thresh = new cv.Mat();
     var kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3, 3));
     var opened = new cv.Mat(), closed = new cv.Mat();
@@ -453,21 +456,31 @@
     try {
       computeMask(src, gray, blurred, thresh, kernel, opened, closed);
       cv.findContours(closed, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-      var best = 0;
+      var best = 0, bestRect = null;
       for (var i = 0; i < contours.size(); i++) {
         var cnt = contours.get(i);
         var a = cv.contourArea(cnt);
-        if (a > best) best = a;
+        if (a > best) { best = a; bestRect = cv.boundingRect(cnt); }
         cnt.delete();
       }
+
+      octx.clearRect(0, 0, overlay.width, overlay.height);
       if (best < 50) {
-        showToast('Não encontrei nenhuma cápsula nessa foto. Tire a foto com 1 cápsula bem visível e sozinha na bandeja.', 'err');
+        showToast('Não encontrei nenhuma cápsula nessa foto. Tire de novo com 1 cápsula bem visível e sozinha na bandeja.', 'err');
         return;
       }
+
+      var sx = overlay.width / pw, sy = overlay.height / ph;
+      octx.lineWidth = 3;
+      octx.strokeStyle = '#38bdf8';
+      octx.strokeRect(bestRect.x * sx, bestRect.y * sy, bestRect.width * sx, bestRect.height * sy);
+      octx.font = 'bold 14px sans-serif';
+      octx.fillStyle = '#38bdf8';
+      octx.fillText('1 cápsula = ' + Math.round(best) + ' px²', bestRect.x * sx, Math.max(16, bestRect.y * sy - 6));
+
       unitArea = best;
       updateCalibLabel();
-      analyzeCurrentPhoto();
-      showToast('Calibrado! Referência: ' + Math.round(best) + ' px².', 'ok');
+      showToast('Confira o quadro azul: precisa cobrir só a cápsula, sem sombra ou outro objeto. Se estiver certo, toque em "Tirar foto" pra contar a bandeja.', 'ok', 5000);
     } finally {
       src.delete(); gray.delete(); blurred.delete(); thresh.delete();
       kernel.delete(); opened.delete(); closed.delete();
@@ -497,23 +510,21 @@
     var url = URL.createObjectURL(file);
     var mode = captureMode;
 
-    if (mode === 'calibrate') {
-      var tmpImg = new Image();
-      tmpImg.onload = function () {
-        URL.revokeObjectURL(url);
-        processCalibrationPhoto(tmpImg);
-      };
-      tmpImg.src = url;
-      return;
-    }
-
     photo.onload = function () {
       URL.revokeObjectURL(url);
       hasPhoto = true;
       placeholder.classList.add('hidden');
       photo.style.display = 'block';
       resizeCanvases();
-      analyzeCurrentPhoto();
+      if (mode === 'calibrate') {
+        countNumber.textContent = '--';
+        countLabel.textContent = 'calibração';
+        matchBadge.className = '';
+        processCalibrationPhoto();
+      } else {
+        countLabel.textContent = 'cápsulas';
+        analyzeCurrentPhoto();
+      }
     };
     photo.src = url;
   });
